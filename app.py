@@ -24,7 +24,7 @@ def load_data():
     except FileNotFoundError:
 
         st.error(
-            "adult.csv file not found. Upload dataset to GitHub repository."
+            "adult.csv file not found. Upload adult.csv to GitHub repository."
         )
 
         st.stop()
@@ -81,7 +81,7 @@ def build_model(df):
                 X[col].mode()[0]
             )
 
-            # Encode
+            # Encode categorical data
             encoder = LabelEncoder()
 
             X[col] = encoder.fit_transform(
@@ -106,7 +106,7 @@ def build_model(df):
         errors="coerce"
     )
 
-    # Fill NaN manually
+    # Fill NaN values
     for col in X.columns:
 
         median_value = X[col].median()
@@ -232,11 +232,20 @@ def main():
         # Numeric columns
         else:
 
+            # Safely convert to numeric
+            numeric_col = pd.to_numeric(
+                data[col],
+                errors="coerce"
+            )
+
+            median_value = numeric_col.median()
+
+            if pd.isna(median_value):
+                median_value = 0.0
+
             input_data_dict[col] = st.number_input(
                 col,
-                value=float(
-                    data[col].median()
-                )
+                value=float(median_value)
             )
 
     # ---------------- PREDICTION ----------------

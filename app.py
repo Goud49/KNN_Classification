@@ -9,7 +9,7 @@ from sklearn.metrics import mean_absolute_error, r2_score
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="BigMart Sales Prediction",
+    page_title="KNN Regression App",
     page_icon="📈",
     layout="centered"
 )
@@ -18,8 +18,17 @@ st.set_page_config(
 @st.cache_data
 def load_data():
 
-    # Dataset file
-    df = pd.read_csv("adult.csv")
+    try:
+        # Make sure this file exists in GitHub repo
+        df = pd.read_csv("Train.csv")
+
+    except FileNotFoundError:
+
+        st.error(
+            "Train.csv file not found. Upload dataset into GitHub repository."
+        )
+
+        st.stop()
 
     return df
 
@@ -30,14 +39,16 @@ def build_model(df):
 
     data = df.copy()
 
-    # Drop ID column
-    if "Item_Identifier" in data.columns:
-        data.drop(columns=["Item_Identifier"], inplace=True)
+    # Remove ID columns if present
+    for col in ["Item_Identifier", "ID", "Id"]:
+        if col in data.columns:
+            data.drop(columns=[col], inplace=True)
 
-    # Target column
-    target_column = "Item_Outlet_Sales"
+    # ---------------- TARGET COLUMN ----------------
+    # Automatically use last column as target
+    target_column = data.columns[-1]
 
-    # Remove rows with missing target
+    # Remove missing target rows
     data = data.dropna(subset=[target_column])
 
     # Features and target
@@ -46,7 +57,7 @@ def build_model(df):
 
     encoders = {}
 
-    # ---------------- HANDLE MISSING VALUES ----------------
+    # ---------------- HANDLE DATA ----------------
     for col in X.columns:
 
         # Categorical columns
@@ -123,17 +134,19 @@ def build_model(df):
         encoders,
         mae,
         r2,
-        X.columns
+        X.columns,
+        target_column,
+        df
     )
 
 
 # ---------------- MAIN APP ----------------
 def main():
 
-    st.title("📈 BigMart Sales Prediction")
+    st.title("📈 KNN Regression Prediction App")
 
     st.write(
-        "Predict Item Outlet Sales using KNN Regressor"
+        "Predict values using K-Nearest Neighbors Regression."
     )
 
     # Load data
@@ -143,6 +156,10 @@ def main():
 
     st.dataframe(df.head())
 
+    st.subheader("📋 Dataset Columns")
+
+    st.write(df.columns.tolist())
+
     # Build model
     (
         model,
@@ -150,119 +167,96 @@ def main():
         encoders,
         mae,
         r2,
-        feature_columns
+        feature_columns,
+        target_column,
+        df
     ) = build_model(df)
 
-    # ---------------- MODEL METRICS ----------------
+    # ---------------- METRICS ----------------
     st.subheader("📊 Model Performance")
 
     st.success(f"Mean Absolute Error: {mae:.2f}")
 
     st.success(f"R² Score: {r2:.2f}")
 
-    # ---------------- USER INPUTS ----------------
-    st.subheader("🧾 Enter Product Details")
+    # ---------------- INPUTS ----------------
+    st.subheader("🧾 Enter Feature Values")
 
-    item_weight = st.number_input(
-        "Item Weight",
-        min_value=0.0
-    )
+    input_data_dict = {}
 
-    item_fat_content = st.selectbox(
-        "Item Fat Content",
-        list(df["Item_Fat_Content"].dropna().unique())
-    )
+    for col in feature_columns:
 
-    item_visibility = st.number_input(
-        "Item Visibility",
-        min_value=0.0
-    )
+        # Categorical
+        if df[col].dtype == "object":
 
-    item_type = st.selectbox(
-        "Item Type",
-        list(df["Item_Type"].dropna().unique())
-    )
+            options = list(
+                df[col].dropna().unique()
+            )
 
-    item_mrp = st.number_input(
-        "Item MRP",
-        min_value=0.0
-    )
+            input_data_dict[col] = st.selectbox(
+                col,
+                options
+            )
 
-    outlet_identifier = st.selectbox(
-        "Outlet Identifier",
-        list(df["Outlet_Identifier"].dropna().unique())
-    )
+        # Numeric
+        else:
 
-    outlet_establishment_year = st.number_input(
-        "Outlet Establishment Year",
-        min_value=1980
-    )
-
-    outlet_size = st.selectbox(
-        "Outlet Size",
-        list(df["Outlet_Size"].dropna().unique())
-    )
-
-    outlet_location_type = st.selectbox(
-        "Outlet Location Type",
-        list(df["Outlet_Location_Type"].dropna().unique())
-    )
-
-    outlet_type = st.selectbox(
-        "Outlet Type",
-        list(df["Outlet_Type"].dropna().unique())
-    )
+            input_data_dict[col] = st.number_input(
+                col,
+                value=0.0
+            )
 
     # ---------------- PREDICTION ----------------
-    if st.button("Predict Sales"):
+    if st.button("Predict"):
 
-        input_data = pd.DataFrame([{
-            "Item_Weight": item_weight,
-            "Item_Fat_Content": item_fat_content,
-            "Item_Visibility": item_visibility,
-            "Item_Type": item_type,
-            "Item_MRP": item_mrp,
-            "Outlet_Identifier": outlet_identifier,
-            "Outlet_Establishment_Year": outlet_establishment_year,
-            "Outlet_Size": outlet_size,
-            "Outlet_Location_Type": outlet_location_type,
-            "Outlet_Type": outlet_type
-        }])
+        input_data = pd.DataFrame(
+            [input_data_dict]
+        )
 
         # Encode categorical columns
         for col in input_data.columns:
 
             if col in encoders:
 
-                value = str(input_data[col].iloc[0])
+                value = str(
+                    input_data[col].iloc[0]
+                )
 
+                # Handle unseen values
                 if value not in encoders[col].classes_:
                     value = encoders[col].classes_[0]
 
-                input_data[col] = encoders[col].transform([value])
+                input_data[col] = encoders[col].transform(
+                    [value]
+                )
 
-        # Convert all columns numeric
+        # Convert numeric
         input_data = input_data.apply(
             pd.to_numeric,
             errors="coerce"
         )
 
-        # Fill NaN values
         input_data = input_data.fillna(0)
 
         # Match training column order
-        input_data = input_data[feature_columns]
+        input_data = input_data[
+            feature_columns
+        ]
 
         # Scale input
-        input_scaled = scaler.transform(input_data)
+        input_scaled = scaler.transform(
+            input_data
+        )
 
-        # Predict
-        prediction = model.predict(input_scaled)[0]
+        # Prediction
+        prediction = model.predict(
+            input_scaled
+        )[0]
 
         st.subheader("✅ Prediction")
 
         st.success(
-            f"Predicted Sales: ₹ {prediction:.2f}"
+            f"Predicted {target_column}: {prediction:.2f}"
         )
 
 

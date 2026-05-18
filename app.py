@@ -9,7 +9,7 @@ from sklearn.metrics import mean_absolute_error, r2_score
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="KNN Regression App",
+    page_title="KNN Regression Prediction App",
     page_icon="📈",
     layout="centered"
 )
@@ -19,13 +19,12 @@ st.set_page_config(
 def load_data():
 
     try:
-        # Make sure this file exists in GitHub repo
-        df = pd.read_csv("adult.csv")
+        df = pd.read_csv("Train.csv")
 
     except FileNotFoundError:
 
         st.error(
-            "Train.csv file not found. Upload dataset into GitHub repository."
+            "Train.csv file not found. Upload Train.csv to GitHub repository."
         )
 
         st.stop()
@@ -39,25 +38,42 @@ def build_model(df):
 
     data = df.copy()
 
-    # Remove ID columns if present
-    for col in ["Item_Identifier", "ID", "Id"]:
+    # Drop unnecessary ID columns
+    drop_cols = [
+        "Item_Identifier",
+        "ID",
+        "Id"
+    ]
+
+    for col in drop_cols:
+
         if col in data.columns:
             data.drop(columns=[col], inplace=True)
 
     # ---------------- TARGET COLUMN ----------------
-    # Automatically use last column as target
+    # Uses last column automatically
     target_column = data.columns[-1]
 
     # Remove missing target rows
+    data = data.dropna(subset=[target_column])
+
+    # Convert target to numeric
+    data[target_column] = pd.to_numeric(
+        data[target_column],
+        errors="coerce"
+    )
+
+    # Remove invalid target rows
     data = data.dropna(subset=[target_column])
 
     # Features and target
     X = data.drop(columns=[target_column])
     y = data[target_column]
 
+    # Store encoders
     encoders = {}
 
-    # ---------------- HANDLE DATA ----------------
+    # ---------------- HANDLE FEATURES ----------------
     for col in X.columns:
 
         # Categorical columns
@@ -83,8 +99,13 @@ def build_model(df):
                 errors="coerce"
             )
 
+            median_value = X[col].median()
+
+            if pd.isna(median_value):
+                median_value = 0
+
             X[col] = X[col].fillna(
-                X[col].median()
+                median_value
             )
 
     # Final cleaning
@@ -136,7 +157,7 @@ def build_model(df):
         r2,
         X.columns,
         target_column,
-        df
+        data
     )
 
 
@@ -149,7 +170,7 @@ def main():
         "Predict values using K-Nearest Neighbors Regression."
     )
 
-    # Load data
+    # Load dataset
     df = load_data()
 
     st.subheader("📂 Dataset Preview")
@@ -169,15 +190,19 @@ def main():
         r2,
         feature_columns,
         target_column,
-        df
+        data
     ) = build_model(df)
 
     # ---------------- METRICS ----------------
     st.subheader("📊 Model Performance")
 
-    st.success(f"Mean Absolute Error: {mae:.2f}")
+    st.success(
+        f"Mean Absolute Error: {mae:.2f}"
+    )
 
-    st.success(f"R² Score: {r2:.2f}")
+    st.success(
+        f"R² Score: {r2:.2f}"
+    )
 
     # ---------------- INPUTS ----------------
     st.subheader("🧾 Enter Feature Values")
@@ -186,11 +211,11 @@ def main():
 
     for col in feature_columns:
 
-        # Categorical
-        if df[col].dtype == "object":
+        # Categorical columns
+        if data[col].dtype == "object":
 
             options = list(
-                df[col].dropna().unique()
+                data[col].dropna().unique()
             )
 
             input_data_dict[col] = st.selectbox(
@@ -198,7 +223,7 @@ def main():
                 options
             )
 
-        # Numeric
+        # Numeric columns
         else:
 
             input_data_dict[col] = st.number_input(
@@ -213,7 +238,7 @@ def main():
             [input_data_dict]
         )
 
-        # Encode categorical columns
+        # Encode categorical values
         for col in input_data.columns:
 
             if col in encoders:
@@ -230,12 +255,13 @@ def main():
                     [value]
                 )
 
-        # Convert numeric
+        # Convert all to numeric
         input_data = input_data.apply(
             pd.to_numeric,
             errors="coerce"
         )
 
+        # Fill missing values
         input_data = input_data.fillna(0)
 
         # Match training column order
@@ -248,11 +274,12 @@ def main():
             input_data
         )
 
-        # Prediction
+        # Predict
         prediction = model.predict(
             input_scaled
         )[0]
 
+        # ---------------- OUTPUT ----------------
         st.subheader("✅ Prediction")
 
         st.success(

@@ -4,13 +4,13 @@ import numpy as np
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, classification_report
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="KNN Regression Prediction App",
-    page_icon="📈",
+    page_title="Adult Income Prediction",
+    page_icon="💼",
     layout="centered"
 )
 
@@ -24,7 +24,7 @@ def load_data():
     except FileNotFoundError:
 
         st.error(
-            "Train.csv file not found. Upload Train.csv to GitHub repository."
+            "adult.csv file not found. Upload dataset to GitHub repository."
         )
 
         st.stop()
@@ -38,39 +38,24 @@ def build_model(df):
 
     data = df.copy()
 
-    # Drop unnecessary ID columns
-    drop_cols = [
-        "Item_Identifier",
-        "ID",
-        "Id"
-    ]
+    # Replace ? with NaN
+    data = data.replace("?", np.nan)
 
-    for col in drop_cols:
+    # Drop missing rows
+    data = data.dropna()
 
-        if col in data.columns:
-            data.drop(columns=[col], inplace=True)
-
-    # ---------------- TARGET COLUMN ----------------
-    # Uses last column automatically
-    target_column = data.columns[-1]
-
-    # Remove missing target rows
-    data = data.dropna(subset=[target_column])
-
-    # Convert target to numeric
-    data[target_column] = pd.to_numeric(
-        data[target_column],
-        errors="coerce"
-    )
-
-    # Remove invalid target rows
-    data = data.dropna(subset=[target_column])
+    # Target column
+    target_column = "income"
 
     # Features and target
     X = data.drop(columns=[target_column])
     y = data[target_column]
 
-    # Store encoders
+    # Encode target
+    target_encoder = LabelEncoder()
+
+    y = target_encoder.fit_transform(y)
+
     encoders = {}
 
     # ---------------- HANDLE FEATURES ----------------
@@ -78,10 +63,6 @@ def build_model(df):
 
         # Categorical columns
         if X[col].dtype == "object":
-
-            X[col] = X[col].fillna(
-                X[col].mode()[0]
-            )
 
             encoder = LabelEncoder()
 
@@ -99,22 +80,9 @@ def build_model(df):
                 errors="coerce"
             )
 
-            median_value = X[col].median()
-
-            if pd.isna(median_value):
-                median_value = 0
-
             X[col] = X[col].fillna(
-                median_value
+                X[col].median()
             )
-
-    # Final cleaning
-    X = X.replace(
-        [np.inf, -np.inf],
-        0
-    )
-
-    X = X.fillna(0)
 
     # ---------------- SCALE ----------------
     scaler = StandardScaler()
@@ -130,7 +98,7 @@ def build_model(df):
     )
 
     # ---------------- MODEL ----------------
-    model = KNeighborsRegressor(
+    model = KNeighborsClassifier(
         n_neighbors=5
     )
 
@@ -139,12 +107,12 @@ def build_model(df):
     # ---------------- EVALUATION ----------------
     y_pred = model.predict(X_test)
 
-    mae = mean_absolute_error(
+    accuracy = accuracy_score(
         y_test,
         y_pred
     )
 
-    r2 = r2_score(
+    report = classification_report(
         y_test,
         y_pred
     )
@@ -153,21 +121,21 @@ def build_model(df):
         model,
         scaler,
         encoders,
-        mae,
-        r2,
+        accuracy,
+        report,
         X.columns,
-        target_column,
-        data
+        data,
+        target_encoder
     )
 
 
 # ---------------- MAIN APP ----------------
 def main():
 
-    st.title("📈 KNN Regression Prediction App")
+    st.title("💼 Adult Income Prediction")
 
     st.write(
-        "Predict values using K-Nearest Neighbors Regression."
+        "Predict whether income is <=50K or >50K using KNN Classification."
     )
 
     # Load dataset
@@ -177,45 +145,41 @@ def main():
 
     st.dataframe(df.head())
 
-    st.subheader("📋 Dataset Columns")
-
-    st.write(df.columns.tolist())
-
     # Build model
     (
         model,
         scaler,
         encoders,
-        mae,
-        r2,
+        accuracy,
+        report,
         feature_columns,
-        target_column,
-        data
+        data,
+        target_encoder
     ) = build_model(df)
 
     # ---------------- METRICS ----------------
-    st.subheader("📊 Model Performance")
+    st.subheader("📊 Model Accuracy")
 
     st.success(
-        f"Mean Absolute Error: {mae:.2f}"
+        f"Accuracy: {accuracy * 100:.2f}%"
     )
 
-    st.success(
-        f"R² Score: {r2:.2f}"
-    )
+    st.subheader("📝 Classification Report")
 
-    # ---------------- INPUTS ----------------
-    st.subheader("🧾 Enter Feature Values")
+    st.text(report)
+
+    # ---------------- USER INPUTS ----------------
+    st.subheader("🧾 Enter Person Details")
 
     input_data_dict = {}
 
     for col in feature_columns:
 
-        # Categorical columns
+        # Categorical
         if data[col].dtype == "object":
 
             options = list(
-                data[col].dropna().unique()
+                data[col].unique()
             )
 
             input_data_dict[col] = st.selectbox(
@@ -223,22 +187,22 @@ def main():
                 options
             )
 
-        # Numeric columns
+        # Numeric
         else:
 
             input_data_dict[col] = st.number_input(
                 col,
-                value=0.0
+                value=float(data[col].median())
             )
 
     # ---------------- PREDICTION ----------------
-    if st.button("Predict"):
+    if st.button("Predict Income"):
 
         input_data = pd.DataFrame(
             [input_data_dict]
         )
 
-        # Encode categorical values
+        # Encode categorical columns
         for col in input_data.columns:
 
             if col in encoders:
@@ -247,7 +211,6 @@ def main():
                     input_data[col].iloc[0]
                 )
 
-                # Handle unseen values
                 if value not in encoders[col].classes_:
                     value = encoders[col].classes_[0]
 
@@ -255,16 +218,15 @@ def main():
                     [value]
                 )
 
-        # Convert all to numeric
+        # Convert numeric
         input_data = input_data.apply(
             pd.to_numeric,
             errors="coerce"
         )
 
-        # Fill missing values
         input_data = input_data.fillna(0)
 
-        # Match training column order
+        # Match training columns
         input_data = input_data[
             feature_columns
         ]
@@ -274,19 +236,23 @@ def main():
             input_data
         )
 
-        # Predict
+        # Prediction
         prediction = model.predict(
             input_scaled
+        )[0]
+
+        result = target_encoder.inverse_transform(
+            [prediction]
         )[0]
 
         # ---------------- OUTPUT ----------------
         st.subheader("✅ Prediction")
 
         st.success(
-            f"Predicted {target_column}: {prediction:.2f}"
+            f"Predicted Income: {result}"
         )
 
 
-# ---------------- RUN APP ----------------
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     main()

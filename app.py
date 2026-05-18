@@ -19,7 +19,8 @@ st.set_page_config(
 def load_data():
 
     try:
-        df = pd.read_csv("Train.csv")
+        df = pd.read_csv("adult
+        .csv")
 
     except FileNotFoundError:
 

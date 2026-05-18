@@ -4,6 +4,7 @@ import numpy as np
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, classification_report
 
@@ -39,16 +40,28 @@ def build_model(df):
     data = df.copy()
 
     # Replace ? with NaN
-    data = data.replace("?", np.nan)
+    data.replace("?", np.nan, inplace=True)
 
-    # Drop missing rows
-    data = data.dropna()
+    # Remove extra spaces
+    data = data.apply(
+        lambda x: x.str.strip()
+        if x.dtype == "object"
+        else x
+    )
 
-    # Target column
+    # ---------------- TARGET ----------------
     target_column = "income"
 
+    # Remove missing target
+    data = data.dropna(
+        subset=[target_column]
+    )
+
     # Features and target
-    X = data.drop(columns=[target_column])
+    X = data.drop(
+        columns=[target_column]
+    )
+
     y = data[target_column]
 
     # Encode target
@@ -63,6 +76,10 @@ def build_model(df):
 
         # Categorical columns
         if X[col].dtype == "object":
+
+            X[col] = X[col].fillna(
+                X[col].mode()[0]
+            )
 
             encoder = LabelEncoder()
 
@@ -80,9 +97,23 @@ def build_model(df):
                 errors="coerce"
             )
 
-            X[col] = X[col].fillna(
-                X[col].median()
-            )
+    # ---------------- IMPUTE ----------------
+    imputer = SimpleImputer(
+        strategy="median"
+    )
+
+    X = pd.DataFrame(
+        imputer.fit_transform(X),
+        columns=X.columns
+    )
+
+    # Final cleaning
+    X = X.replace(
+        [np.inf, -np.inf],
+        0
+    )
+
+    X = X.fillna(0)
 
     # ---------------- SCALE ----------------
     scaler = StandardScaler()
@@ -120,6 +151,7 @@ def build_model(df):
     return (
         model,
         scaler,
+        imputer,
         encoders,
         accuracy,
         report,
@@ -149,6 +181,7 @@ def main():
     (
         model,
         scaler,
+        imputer,
         encoders,
         accuracy,
         report,
@@ -179,7 +212,7 @@ def main():
         if data[col].dtype == "object":
 
             options = list(
-                data[col].unique()
+                data[col].dropna().unique()
             )
 
             input_data_dict[col] = st.selectbox(
@@ -192,10 +225,12 @@ def main():
 
             input_data_dict[col] = st.number_input(
                 col,
-                value=float(data[col].median())
+                value=float(
+                    data[col].median()
+                )
             )
 
-    # ---------------- PREDICTION ----------------
+    # ---------------- PREDICT ----------------
     if st.button("Predict Income"):
 
         input_data = pd.DataFrame(
@@ -224,19 +259,18 @@ def main():
             errors="coerce"
         )
 
-        input_data = input_data.fillna(0)
+        # Impute missing values
+        input_data = pd.DataFrame(
+            imputer.transform(input_data),
+            columns=input_data.columns
+        )
 
-        # Match training columns
-        input_data = input_data[
-            feature_columns
-        ]
-
-        # Scale input
+        # Scale
         input_scaled = scaler.transform(
             input_data
         )
 
-        # Prediction
+        # Predict
         prediction = model.predict(
             input_scaled
         )[0]
@@ -253,6 +287,6 @@ def main():
         )
 
 
-# ---------------- RUN ----------------
+# ---------------- RUN APP ----------------
 if __name__ == "__main__":
     main()

@@ -20,7 +20,7 @@ def load_data():
 
     try:
         # Make sure this file exists in GitHub repo
-        df = pd.read_csv("Train.csv")
+        df = pd.read_csv("adult.csv")
 
     except FileNotFoundError:
 
